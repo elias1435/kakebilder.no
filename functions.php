@@ -1,4 +1,28 @@
 <?php
+/**
+ * Theme functions and definitions
+ *
+ * @package HelloElementorChild
+ */
+
+/**
+ * Load child theme css and optional scripts
+ *
+ * @return void
+ */
+function hello_elementor_child_enqueue_scripts() {
+	wp_enqueue_style(
+		'hello-elementor-child-style',
+		get_stylesheet_directory_uri() . '/style.css',
+		[
+			'hello-elementor-theme-style',
+		],
+		'1.0.0'
+	);
+}
+add_action( 'wp_enqueue_scripts', 'hello_elementor_child_enqueue_scripts', 20 );
+
+
 function redirect_to_cart_after_add_to_cart($url) {
     return wc_get_cart_url();
 }
@@ -104,14 +128,14 @@ function add_custom_image_text_fields() {
 
 
 
-// image upload option start here
+
 
 <script>
 
 jQuery(document).ready(function ($) {
     let canvas = document.getElementById("canvas");
-	canvas.width = 1024;
-	canvas.height = 1024;
+	canvas.width = 300;
+	canvas.height = 300;
     let ctx = canvas.getContext("2d");
 
     let textX = canvas.width / 2, textY = canvas.height / 2;
@@ -149,6 +173,7 @@ jQuery(document).ready(function ($) {
             uploadedImage = img;
         };
     }
+
 	
     function drawText() {
         let textValue = $("#custom_text").val();
@@ -305,10 +330,44 @@ jQuery(document).ready(function ($) {
 		$("#upload_status").show().text("Bilde generert vellykket!");
 	}
 	
-	$("#generate_final_image").click(function () {
-		generateFinalImage();
-	});
 
+	function generateFinalImage() {
+		let exportCanvas = document.createElement("canvas");
+		let exportCtx = exportCanvas.getContext("2d");
+
+		// Set export canvas to 1024x1024
+		exportCanvas.width = 1024;
+		exportCanvas.height = 1024;
+
+		// Draw background image scaled up
+		if (uploadedImage) {
+			let scale = Math.max(exportCanvas.width / uploadedImage.width, exportCanvas.height / uploadedImage.height);
+			let imgWidth = uploadedImage.width * scale;
+			let imgHeight = uploadedImage.height * scale;
+			let imgX = (exportCanvas.width - imgWidth) / 2;
+			let imgY = (exportCanvas.height - imgHeight) / 2;
+
+			exportCtx.drawImage(uploadedImage, imgX, imgY, imgWidth, imgHeight);
+		}
+
+		// Draw text on the high-res canvas
+		let textValue = $("#custom_text").val();
+		exportCtx.font = "bold 72px Arial"; // Scale text for higher resolution
+		exportCtx.fillStyle = "black";
+		exportCtx.textAlign = "center";
+		exportCtx.fillText(textValue, exportCanvas.width / 2, exportCanvas.height / 2);
+
+		// Convert to image and store in hidden input
+		let finalImage = exportCanvas.toDataURL("image/png");
+		$("#custom_uploaded_image").val(finalImage);
+		$("#upload_status").show().text("Bilde generert vellykket!");
+	}
+
+	
+	
+	
+	
+	
 	$(".single_add_to_cart_button").click(function () {
 		generateFinalImage();
 	});	
