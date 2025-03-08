@@ -88,6 +88,24 @@ function update_cart_quantity() {
 
 
 
+// custom js
+function enqueue_custom_scripts() {
+    wp_enqueue_script('jquery');
+    wp_enqueue_script(
+        'custom-image-upload',
+        get_stylesheet_directory_uri() . '/js/custom-image-upload.js', 
+        array('jquery'),
+        false,
+        true
+    );
+    wp_localize_script('custom-image-upload', 'ajax_object', array(
+        'ajax_url' => admin_url('admin-ajax.php')
+    ));
+}
+add_action('wp_enqueue_scripts', 'enqueue_custom_scripts');
+
+
+
 add_action('woocommerce_before_add_to_cart_button', 'add_custom_image_text_fields');
 
 function add_custom_image_text_fields() {
@@ -121,21 +139,18 @@ function add_custom_image_text_fields() {
 			<input type="range" id="zoom_slider" min="0.5" max="2" step="0.1" value="1">	
 		</div>
 
-        <!--<button type="button" id="generate_final_image" class="button">Generer endelig bilde</button>-->
+        <button type="button" id="generate_final_image" class="button">Generer endelig bilde</button>
         <p id="upload_status">Bilde generert vellykket!</p>
+
+        <input type="hidden" name="uploaded-original-image" id="uploaded-original-image" value="">
+
         <input type="hidden" name="custom_uploaded_image" id="custom_uploaded_image" value="" />
     </div>
-
-
-
-
 
 <script>
 
 jQuery(document).ready(function ($) {
     let canvas = document.getElementById("canvas");
-	canvas.width = 300;
-	canvas.height = 300;
     let ctx = canvas.getContext("2d");
 
     let textX = canvas.width / 2, textY = canvas.height / 2;
@@ -173,7 +188,6 @@ jQuery(document).ready(function ($) {
             uploadedImage = img;
         };
     }
-
 	
     function drawText() {
         let textValue = $("#custom_text").val();
@@ -189,6 +203,7 @@ jQuery(document).ready(function ($) {
         loadImage(uploadedImage ? uploadedImage.src : defaultImage);
     });
 
+    // new
     $("#image_upload").on("change", function (event) {
         let file = event.target.files[0];
         if (!file) return;
@@ -204,9 +219,13 @@ jQuery(document).ready(function ($) {
                 imgY = 0;
                 loadImage(uploadedImage.src);
             };
+
+            // Store base64-encoded image in the new hidden field
+            $("#uploaded-original-image").val(e.target.result);
         };
         reader.readAsDataURL(file);
     });
+
 
 	$(canvas).on("mousedown", function (e) {
 		if (!isKakeBilder) return; // Disable dragging if not product_cat-kake-bilder
@@ -330,43 +349,10 @@ jQuery(document).ready(function ($) {
 		$("#upload_status").show().text("Bilde generert vellykket!");
 	}
 	
+	$("#generate_final_image").click(function () {
+		generateFinalImage();
+	});
 
-	function generateFinalImage() {
-		let exportCanvas = document.createElement("canvas");
-		let exportCtx = exportCanvas.getContext("2d");
-
-		// Set export canvas to 1024x1024
-		exportCanvas.width = 1024;
-		exportCanvas.height = 1024;
-
-		// Draw background image scaled up
-		if (uploadedImage) {
-			let scale = Math.max(exportCanvas.width / uploadedImage.width, exportCanvas.height / uploadedImage.height);
-			let imgWidth = uploadedImage.width * scale;
-			let imgHeight = uploadedImage.height * scale;
-			let imgX = (exportCanvas.width - imgWidth) / 2;
-			let imgY = (exportCanvas.height - imgHeight) / 2;
-
-			exportCtx.drawImage(uploadedImage, imgX, imgY, imgWidth, imgHeight);
-		}
-
-		// Draw text on the high-res canvas
-		let textValue = $("#custom_text").val();
-		exportCtx.font = "bold 72px Arial"; // Scale text for higher resolution
-		exportCtx.fillStyle = "black";
-		exportCtx.textAlign = "center";
-		exportCtx.fillText(textValue, exportCanvas.width / 2, exportCanvas.height / 2);
-
-		// Convert to image and store in hidden input
-		let finalImage = exportCanvas.toDataURL("image/png");
-		$("#custom_uploaded_image").val(finalImage);
-		$("#upload_status").show().text("Bilde generert vellykket!");
-	}
-
-	
-	
-	
-	
 	
 	$(".single_add_to_cart_button").click(function () {
 		generateFinalImage();
@@ -442,8 +428,7 @@ jQuery(document).ready(function($) {
     });
 });
 
-	
-	
+
 </script>
 <?php
 }
@@ -461,32 +446,56 @@ add_action('woocommerce_before_single_product', function () {
 });
 
 
+// new code
 add_filter('woocommerce_add_cart_item_data', 'save_custom_image_to_server', 10, 2);
 function save_custom_image_to_server($cart_item_data, $product_id) {
+    $upload_dir = wp_upload_dir();
+
+    // Save the Canvas-generated image (custom_uploaded_image)
     if (!empty($_POST['custom_uploaded_image'])) {
         $base64_image = $_POST['custom_uploaded_image'];
-
         $image_parts = explode(";base64,", $base64_image);
+
         if (count($image_parts) == 2) {
             $image_base64 = base64_decode($image_parts[1]);
-            $upload_dir = wp_upload_dir();
-            
 
+            // Generate unique filename
             $image_name = 'custom_product_' . uniqid() . '.png';
             $file_path = $upload_dir['path'] . '/' . $image_name;
             $file_url = $upload_dir['url'] . '/' . $image_name;
 
-
+            // Save image
             file_put_contents($file_path, $image_base64);
 
-
+            // Store in cart item data
             $cart_item_data['custom_image'] = esc_url($file_url);
-
-
             WC()->session->set('custom_uploaded_image', $file_url);
         }
     }
 
+    // Save the uploaded file image (uploaded-original-image)
+    if (!empty($_POST['uploaded-original-image'])) {
+        $base64_image = $_POST['uploaded-original-image'];
+        $image_parts = explode(";base64,", $base64_image);
+
+        if (count($image_parts) == 2) {
+            $image_base64 = base64_decode($image_parts[1]);
+
+            // Generate unique filename
+            $image_name = 'uploaded_original_' . uniqid() . '.png';
+            $file_path = $upload_dir['path'] . '/' . $image_name;
+            $file_url = $upload_dir['url'] . '/' . $image_name;
+
+            // Save image
+            file_put_contents($file_path, $image_base64);
+
+            // Store in cart item data
+            $cart_item_data['uploaded_original_image'] = esc_url($file_url);
+            WC()->session->set('uploaded_original_image', $file_url);
+        }
+    }
+
+    // Save the custom text
     if (!empty($_POST['custom_text'])) {
         $cart_item_data['custom_text'] = sanitize_text_field($_POST['custom_text']);
         WC()->session->set('custom_text', $_POST['custom_text']);
@@ -498,6 +507,7 @@ function save_custom_image_to_server($cart_item_data, $product_id) {
 
 
 
+// canvas generateed image display in cart
 add_filter('woocommerce_get_item_data', 'display_custom_image_in_cart', 10, 2);
 function display_custom_image_in_cart($item_data, $cart_item) {
     if (!empty($cart_item['custom_text'])) {
@@ -512,87 +522,65 @@ function display_custom_image_in_cart($item_data, $cart_item) {
     return $item_data;
 }
 
-// TY
-add_action('woocommerce_checkout_create_order_line_item', 'save_custom_fields_to_order_items', 10, 4);
-function save_custom_fields_to_order_items($item, $cart_item_key, $values, $order) {
+// new code - cart & checkout display the original uploaded image - need to hide in cart & chckout page
+add_filter('woocommerce_cart_item_name', 'display_uploaded_original_image_in_cart', 10, 3);
+function display_uploaded_original_image_in_cart($product_name, $cart_item, $cart_item_key) {
+    if (!empty($cart_item['uploaded_original_image'])) {
+        $product_name .= '<p class="uploaded-original-image"><strong>Lastet opp originalbilde:</strong><br>';
+        $product_name .= '<img src="'.esc_url($cart_item['uploaded_original_image']).'" style="max-width:100px; height:auto; border:1px solid #ddd; padding:1px;"></p>';
+    }
+    return $product_name;
+}
+
+// new code - Modify the existing function that saves product metadata to the order when checkout is completed.
+add_action('woocommerce_checkout_create_order_line_item', 'save_uploaded_images_to_order_meta', 10, 4);
+function save_uploaded_images_to_order_meta($item, $cart_item_key, $values, $order) {
     if (!empty($values['custom_text'])) {
-        $item->add_meta_data('Custom Text', sanitize_text_field($values['custom_text']));
+        $item->add_meta_data('Egendefinert tekst', sanitize_text_field($values['custom_text']));
     }
 
     if (!empty($values['custom_image'])) {
-        $item->add_meta_data('Uploaded Image', esc_url($values['custom_image']));
+        $item->add_meta_data('Lastet opp bilde', esc_url($values['custom_image']));
     }
-}
-add_action('woocommerce_thankyou', 'display_custom_fields_on_thank_you_page', 20);
-function display_custom_fields_on_thank_you_page($order_id) {
-    $order = wc_get_order($order_id);
-    
-    echo '<h2>Custom Order Details</h2>';
-    
-    foreach ($order->get_items() as $item) {
-        $custom_text = $item->get_meta('Custom Text', true);
-        $uploaded_image = $item->get_meta('Uploaded Image', true);
 
-        if (!empty($custom_text)) {
-            echo '<p><strong>Custom Text:</strong> ' . esc_html($custom_text) . '</p>';
-        }
-        
-        if (!empty($uploaded_image)) {
-            echo '<p><strong>Uploaded Image:</strong></p>';
-            echo '<img src="' . esc_url($uploaded_image) . '" style="max-width:200px; height:auto; border:1px solid #ddd; padding:5px;">';
-        }
+    if (!empty($values['uploaded_original_image'])) {
+        $item->add_meta_data('Lastet opp originalbilde', esc_url($values['uploaded_original_image']));
     }
 }
 
 
-
-
-add_action('woocommerce_admin_order_item_headers', 'add_custom_image_column_header');
-add_action('woocommerce_admin_order_item_values', 'add_custom_image_column_content', 10, 3);
-
-function add_custom_image_column_header($order) {
-    echo '<th>Lastet opp bilde</th>';
-}
-
-function add_custom_image_column_content($product, $item, $order) {
-    $image_url = $item->get_meta('_custom_uploaded_image');
-
-    if (!empty($image_url)) {
-        echo '<td>';
-        echo '<img src="' . esc_url($image_url) . '" style="width: 100px; height: 100px; border-radius: 100%; object-fit: cover;">';
-        echo '<br><a href="' . esc_url($image_url) . '" download class="button button-primary">Download</a>';
-        echo '</td>';
-    } else {
-        echo '<td>—</td>';
+add_action('woocommerce_admin_order_item_values', 'display_uploaded_images_in_admin_order', 10, 3);
+function display_uploaded_images_in_admin_order($column, $item, $order) {
+    // Ensure the correct column is targeted (Product column)
+    if ($column !== 'name') {
+        return;
     }
-}
 
+    // Get custom text
+    $custom_text = $item->get_meta('Custom Text', true);
 
+    // Get the canvas-generated image
+    $custom_image = $item->get_meta('Uploaded Image', true);
 
-add_action('woocommerce_admin_order_data_after_order_details', 'display_uploaded_image_in_admin_order_meta');
-function display_uploaded_image_in_admin_order_meta($order) {
-    $image_url = $order->get_meta('_custom_uploaded_image');
+    // Get the uploaded original image
+    $uploaded_original_image = $item->get_meta('Uploaded Original Image', true);
 
-    if (!empty($image_url)) {
-        echo '<p><strong>Custom Uploaded Image:</strong></p>';
-        echo '<img id="order_uploaded_image" src="' . esc_url($image_url) . '" style="width: 50px; height: 50px; border-radius: 100%; object-fit: cover;">';
+    // Display custom text if available
+    if (!empty($custom_text)) {
+        echo '<p><strong>Tilpasset tekst:</strong> ' . esc_html($custom_text) . '</p>';
+    }
 
-        echo '<p><button id="download_uploaded_image" class="button button-primary">Lastet opp bilde</button></p>';
+    // Display the generated image if available
+    if (!empty($custom_image)) {
+        echo '<p><strong>Generert bilde:</strong><br>';
+        echo '<img src="' . esc_url($custom_image) . '" style="max-width:100px; height:auto; border:1px solid #ddd; padding:2px;"></p>';
+    }
 
-        echo '<script>
-            document.getElementById("download_uploaded_image").addEventListener("click", function() {
-                let imageElement = document.getElementById("order_uploaded_image");
-                let imageURL = imageElement.src;
-                let link = document.createElement("a");
-                link.href = imageURL;
-                link.download = "custom_uploaded_image.png";
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            });
-        </script>';
-    } else {
-        echo '<p style="color: gray;">No custom image uploaded.</p>';
+    // Display the uploaded original image with a download button
+    if (!empty($uploaded_original_image)) {
+        echo '<p><strong>Lastet opp originalbilde:</strong><br>';
+        echo '<img src="' . esc_url($uploaded_original_image) . '" style="max-width:100px; height:auto; border:1px solid #ddd; padding:2px;"><br>';
+        echo '<a href="' . esc_url($uploaded_original_image) . '" download class="button button-primary">Download Original Image</a></p>';
     }
 }
 
@@ -628,5 +616,4 @@ function add_custom_fields_to_order_email($order, $sent_to_admin, $plain_text, $
         }
     }
 }
-
 
