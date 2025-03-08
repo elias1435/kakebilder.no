@@ -147,6 +147,10 @@ function add_custom_image_text_fields() {
         <input type="hidden" name="custom_uploaded_image" id="custom_uploaded_image" value="" />
     </div>
 
+
+
+
+
 <script>
 
 jQuery(document).ready(function ($) {
@@ -429,6 +433,7 @@ jQuery(document).ready(function($) {
 });
 
 
+	
 </script>
 <?php
 }
@@ -583,7 +588,6 @@ function display_uploaded_images_in_admin_order($column, $item, $order) {
         echo '<a href="' . esc_url($uploaded_original_image) . '" download class="button button-primary">Download Original Image</a></p>';
     }
 }
-
 
 add_action('woocommerce_email_order_meta', 'attach_custom_image_to_emails', 10, 3);
 
